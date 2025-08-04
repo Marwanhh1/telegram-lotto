@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Buy Lottery Ticket</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <style>
+    body { font-family: sans-serif; padding: 20px; background: #f0f0f0; }
+    button { padding: 10px 20px; margin: 10px 0; }
+  </style>
+</head>
+<body>
+  <h2>🎟 Buy Lottery Ticket</h2>
+  <div id="ticket"></div>
+  <button onclick="buyRandom()">🎰 Random Ticket</button>
+  <button onclick="buyManual()">✍️ Manual Entry</button>
+
+  <script>
+    const tg = window.Telegram.WebApp;
+    tg.expand();
+
+    function buyRandom() {
+      const numbers = [];
+      while (numbers.length < 6) {
+        const n = Math.floor(Math.random() * 42) + 1;
+        if (!numbers.includes(n)) numbers.push(n);
+      }
+      numbers.sort((a,b) => a-b);
+      let bonus;
+      do {
+        bonus = Math.floor(Math.random() * 42) + 1;
+      } while (numbers.includes(bonus));
+
+      const ticket = { numbers, bonus };
+      tg.sendData(JSON.stringify(ticket));
+    }
+
+    function buyManual() {
+      const input = prompt("Enter 6 numbers and bonus (e.g. 1,2,3,4,5,6|7):");
+      if (!input) return;
+      const parts = input.split("|");
+      const nums = parts[0].split(",").map(n => parseInt(n.trim()));
+      const bonus = parseInt(parts[1].trim());
+      if (nums.length !== 6 || new Set(nums).size !== 6 || nums.some(n => n < 1 || n > 42) || bonus < 1 || bonus > 42 || nums.includes(bonus)) {
+        alert("Invalid input");
+        return;
+      }
+      const ticket = { numbers: nums, bonus };
+      tg.sendData(JSON.stringify(ticket));
+    }
+  </script>
+</body>
+</html>
