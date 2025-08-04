@@ -1,0 +1,35 @@
+
+body {
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  background-color: #111;
+  color: #f1c40f;
+  padding: 30px;
+  text-align: center;
+}
+
+h2 {
+  font-size: 26px;
+  margin-bottom: 20px;
+  color: #f39c12;
+}
+
+button {
+  padding: 12px 24px;
+  font-size: 16px;
+  margin: 10px;
+  background-color: #f1c40f;
+  border: none;
+  border-radius: 8px;
+  color: #111;
+  cursor: pointer;
+  transition: 0.3s ease;
+}
+
+button:hover {
+  background-color: #f39c12;
+}
+
+#ticket {
+  margin-top: 15px;
+  font-size: 18px;
+}
