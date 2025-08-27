@@ -1,0 +1,311 @@
+import os
+import logging
+import random
+import psycopg2
+from datetime import datetime
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
+
+# Enable logging
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO
+)
+logger = logging.getLogger(__name__)
+
+# Database connection
+def get_db_connection():
+    database_url = os.environ.get('DATABASE_URL')
+    return psycopg2.connect(database_url)
+
+# Initialize database
+def init_db():
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute('''
+        CREATE TABLE IF NOT EXISTS tickets (
+            id SERIAL PRIMARY KEY,
+            user_id INTEGER,
+            username TEXT,
+            numbers TEXT,
+            bonus_number INTEGER,
+            ticket_id TEXT UNIQUE,
+            purchased_at TIMESTAMP,
+            payment_status TEXT DEFAULT 'pending'
+        )
+        ''')
+        conn.commit()
+        conn.close()
+        logger.info("Database initialized successfully")
+    except Exception as e:
+        logger.error(f"Error initializing database: {e}")
+
+# Generate lottery numbers
+def generate_numbers():
+    numbers = sorted(random.sample(range(1, 43), 6))
+    bonus = random.randint(1, 42)
+    return numbers, bonus
+
+# Start command
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    keyboard = [
+        [InlineKeyboardButton("💰 Buy Ticket", callback_data='buy_ticket')],
+        [InlineKeyboardButton("🎫 My Tickets", callback_data='my_tickets')],
+        [InlineKeyboardButton("🔗 Connect Wallet", callback_data='connect_wallet')]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await update.message.reply_html(
+        f"Hi {user.mention_html()}! Welcome to TON Lottery!\n\n"
+        "Get your lottery ticket for 1 TON and win big!",
+        reply_markup=reply_markup
+    )
+
+# Handle button callbacks
+async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    if query.data == 'buy_ticket':
+        await buy_ticket(update, context)
+    elif query.data == 'my_tickets':
+        await my_tickets(update, context)
+    elif query.data == 'connect_wallet':
+        await connect_wallet(update, context)
+    elif query.data.startswith('confirm_'):
+        await confirm_purchase(update, context)
+    elif query.data.startswith('pay_'):
+        await process_payment(update, context)
+    elif query.data == 'back_to_main':
+        await start_callback(update, context)
+
+# Start callback for back button
+async def start_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    user = query.from_user
+    keyboard = [
+        [InlineKeyboardButton("💰 Buy Ticket", callback_data='buy_ticket')],
+        [InlineKeyboardButton("🎫 My Tickets", callback_data='my_tickets')],
+        [InlineKeyboardButton("🔗 Connect Wallet", callback_data='connect_wallet')]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await query.edit_message_text(
+        f"Hi {user.mention_html()}! Welcome to TON Lottery!\n\n"
+        "Get your lottery ticket for 1 TON and win big!",
+        reply_markup=reply_markup,
+        parse_mode='HTML'
+    )
+
+# Connect wallet handler
+async def connect_wallet(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    
+    keyboard = [
+        [InlineKeyboardButton("📱 Connect Tonkeeper", callback_data='connect_tonkeeper')],
+        [InlineKeyboardButton("📲 Connect Tonhub", callback_data='connect_tonhub')],
+        [InlineKeyboardButton("⬅️ Back", callback_data='back_to_main')]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await query.edit_message_text(
+        "🔗 Connect your TON wallet:\n\n"
+        "Please select your wallet provider to connect:",
+        reply_markup=reply_markup
+    )
+
+# Buy ticket flow
+async def buy_ticket(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    user = query.from_user
+    
+    # Generate ticket numbers
+    numbers, bonus = generate_numbers()
+    ticket_id = f"TONLOTO_{random.randint(100000, 999999)}"
+    
+    # Store in context for confirmation
+    context.user_data['pending_ticket'] = {
+        'numbers': numbers,
+        'bonus': bonus,
+        'ticket_id': ticket_id
+    }
+    
+    keyboard = [
+        [InlineKeyboardButton("✅ Confirm Purchase", callback_data=f'confirm_{ticket_id}')],
+        [InlineKeyboardButton("❌ Cancel", callback_data='back_to_main')]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await query.edit_message_text(
+        f"🎫 Your lottery numbers:\n"
+        f"Main: {', '.join(map(str, numbers))}\n"
+        f"Bonus: {bonus}\n\n"
+        f"Ticket ID: {ticket_id}\n"
+        f"Price: 1 TON\n\n"
+        f"Confirm purchase?",
+        reply_markup=reply_markup
+    )
+
+# Confirm purchase
+async def confirm_purchase(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    user = query.from_user
+    ticket_data = context.user_data.get('pending_ticket')
+    
+    if not ticket_data:
+        await query.edit_message_text("❌ Error: Ticket data not found. Please try again.")
+        return
+    
+    # Save to database with pending status
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute('''
+        INSERT INTO tickets (user_id, username, numbers, bonus_number, ticket_id, purchased_at)
+        VALUES (%s, %s, %s, %s, %s, %s)
+        ''', (
+            user.id, 
+            user.username, 
+            ','.join(map(str, ticket_data['numbers'])), 
+            ticket_data['bonus'], 
+            ticket_data['ticket_id'],
+            datetime.now()
+        ))
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        logger.error(f"Database error: {e}")
+        await query.edit_message_text("❌ Error saving ticket. Please try again.")
+        return
+    
+    # Generate payment address (in real implementation, use a unique address per user)
+    payment_address = "EQABC123... (your TON wallet address)"
+    
+    keyboard = [
+        [InlineKeyboardButton("💳 I've Paid", callback_data=f'pay_{ticket_data["ticket_id"]}')],
+        [InlineKeyboardButton("⬅️ Back", callback_data='back_to_main')]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await query.edit_message_text(
+        f"💳 Please send exactly 1 TON to:\n\n"
+        f"`{payment_address}`\n\n"
+        f"After payment, click 'I've Paid' to verify your transaction.\n\n"
+        f"Ticket ID: {ticket_data['ticket_id']}",
+        parse_mode='Markdown',
+        reply_markup=reply_markup
+    )
+
+# Process payment (simplified)
+async def process_payment(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    user = query.from_user
+    ticket_id = query.data.replace('pay_', '')
+    
+    # In a real implementation, you would check blockchain for the transaction
+    # For this example, we'll assume payment was successful
+    
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute('''
+        UPDATE tickets SET payment_status = 'paid' WHERE ticket_id = %s AND user_id = %s
+        ''', (ticket_id, user.id))
+        conn.commit()
+        
+        # Get the ticket details
+        cursor.execute('SELECT numbers, bonus_number FROM tickets WHERE ticket_id = %s', (ticket_id,))
+        ticket = cursor.fetchone()
+        conn.close()
+        
+        if ticket:
+            numbers = ticket[0].split(',')
+            bonus = ticket[1]
+            
+            await query.edit_message_text(
+                f"✅ Payment confirmed!\n\n"
+                f"🎫 Your lottery ticket:\n"
+                f"Main: {', '.join(numbers)}\n"
+                f"Bonus: {bonus}\n\n"
+                f"Ticket ID: {ticket_id}\n\n"
+                f"Good luck! The draw will be on Saturday at 20:00 UTC."
+            )
+        else:
+            await query.edit_message_text("❌ Error: Ticket not found.")
+    except Exception as e:
+        logger.error(f"Payment processing error: {e}")
+        await query.edit_message_text("❌ Error processing payment. Please try again.")
+
+# View user's tickets
+async def my_tickets(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    user = query.from_user
+    
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute('''
+        SELECT ticket_id, numbers, bonus_number, purchased_at, payment_status 
+        FROM tickets WHERE user_id = %s ORDER BY purchased_at DESC
+        ''', (user.id,))
+        
+        tickets = cursor.fetchall()
+        conn.close()
+        
+        if not tickets:
+            await query.edit_message_text("You don't have any tickets yet.")
+            return
+        
+        message = "🎫 Your Tickets:\n\n"
+        for ticket in tickets:
+            status = "✅ Paid" if ticket[4] == 'paid' else "⏳ Pending"
+            message += (
+                f"ID: {ticket[0]}\n"
+                f"Numbers: {ticket[1]} + {ticket[2]}\n"
+                f"Purchased: {ticket[3].strftime('%Y-%m-%d %H:%M')}\n"
+                f"Status: {status}\n\n"
+            )
+        
+        keyboard = [[InlineKeyboardButton("⬅️ Back", callback_data='back_to_main')]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await query.edit_message_text(message, reply_markup=reply_markup)
+    except Exception as e:
+        logger.error(f"Error fetching tickets: {e}")
+        await query.edit_message_text("❌ Error retrieving your tickets. Please try again.")
+
+# Error handler
+async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    logger.error(msg="Exception while handling an update:", exc_info=context.error)
+
+# Main function
+def main():
+    # Get token from environment variable
+    token = os.environ.get('TELEGRAM_BOT_TOKEN')
+    if not token:
+        logger.error("No TELEGRAM_BOT_TOKEN found in environment variables")
+        return
+    
+    # Initialize database
+    init_db()
+    
+    # Create Application
+    application = Application.builder().token(token).build()
+    
+    # Add handlers
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CallbackQueryHandler(button_handler))
+    
+    # Error handler
+    application.add_error_handler(error_handler)
+    
+    # Start the bot - use polling for development
+    logger.info("Starting bot...")
+    application.run_polling()
+
+if __name__ == '__main__':
+    main()
