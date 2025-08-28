@@ -3,7 +3,6 @@ import logging
 import random
 import psycopg2
 import asyncio
-import aiohttp
 from datetime import datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
@@ -21,8 +20,6 @@ logger = logging.getLogger(__name__)
 
 # TON Configuration - REPLACE WITH YOUR WALLET ADDRESS
 TON_WALLET_ADDRESS = os.environ.get('TON_WALLET_ADDRESS', 'UQDn-7fmd-goYxycJZuKBBkaBM2Hd8XJEVOqQyE_22892mXs')
-TON_API_URL = "https://toncenter.com/api/v3/"
-TON_API_KEY = os.environ.get('TON_API_KEY', '')  # Optional: for higher rate limits
 
 # Database connection
 def get_db_connection():
@@ -74,15 +71,14 @@ def generate_numbers():
 def generate_ticket_id():
     return f"TONLOTO_{random.randint(100000, 999999)}_{int(datetime.now().timestamp())}"
 
-# Check TON payment using TON Center API (simplified)
+# Check TON payment (simplified for testing)
 async def check_ton_payment(ticket_id, user_id):
     try:
-        # In a real implementation, you would query the blockchain
-        # For now, we'll simulate payment verification
-        await asyncio.sleep(3)  # Simulate API call delay
+        # Simulate payment verification
+        await asyncio.sleep(3)
         
-        # Simulate 80% success rate for testing
-        return random.random() > 0.2  # 80% chance of success
+        # For testing, simulate 80% success rate
+        return random.random() > 0.2
         
     except Exception as e:
         logger.error(f"Payment check error: {e}")
@@ -92,21 +88,11 @@ async def check_ton_payment(ticket_id, user_id):
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     
-    # Check if user has wallet connected
-    wallet_connected = check_wallet_connection(user.id)
-    
-    if wallet_connected:
-        keyboard = [
-            [InlineKeyboardButton("💰 Buy Ticket", callback_data='buy_ticket')],
-            [InlineKeyboardButton("🎫 My Tickets", callback_data='my_tickets')],
-            [InlineKeyboardButton("🔗 Wallet Settings", callback_data='connect_wallet')]
-        ]
-    else:
-        keyboard = [
-            [InlineKeyboardButton("💰 Buy Ticket", callback_data='buy_ticket')],
-            [InlineKeyboardButton("🎫 My Tickets", callback_data='my_tickets')],
-            [InlineKeyboardButton("🔗 Connect Wallet", callback_data='connect_wallet')]
-        ]
+    keyboard = [
+        [InlineKeyboardButton("💰 Buy Ticket", callback_data='buy_ticket')],
+        [InlineKeyboardButton("🎫 My Tickets", callback_data='my_tickets')],
+        [InlineKeyboardButton("🔗 Connect Wallet", callback_data='connect_wallet')]
+    ]
     
     reply_markup = InlineKeyboardMarkup(keyboard)
     
@@ -114,27 +100,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     welcome_text = f"Hi {user.mention_html()}! Welcome to TON Lottery!\n\n"
     welcome_text += "Get your lottery ticket for 1 TON and win big!\n\n"
-    
-    if wallet_connected:
-        welcome_text += "✅ Your wallet is connected!"
-    else:
-        welcome_text += "🔗 Connect your wallet to purchase tickets easily"
+    welcome_text += "💰 Prize pool: 80% of all ticket sales!"
     
     await update.message.reply_html(welcome_text, reply_markup=reply_markup)
-
-# Check if user has wallet connected
-def check_wallet_connection(user_id):
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute('SELECT wallet_connected FROM tickets WHERE user_id = %s ORDER BY purchased_at DESC LIMIT 1', (user_id,))
-        result = cursor.fetchone()
-        conn.close()
-        
-        return result[0] if result else False
-    except Exception as e:
-        logger.error(f"Error checking wallet connection: {e}")
-        return False
 
 # Handle button callbacks
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -172,30 +140,17 @@ async def start_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user = query.from_user
     
-    wallet_connected = check_wallet_connection(user.id)
-    
-    if wallet_connected:
-        keyboard = [
-            [InlineKeyboardButton("💰 Buy Ticket", callback_data='buy_ticket')],
-            [InlineKeyboardButton("🎫 My Tickets", callback_data='my_tickets')],
-            [InlineKeyboardButton("🔗 Wallet Settings", callback_data='connect_wallet')]
-        ]
-    else:
-        keyboard = [
-            [InlineKeyboardButton("💰 Buy Ticket", callback_data='buy_ticket')],
-            [InlineKeyboardButton("🎫 My Tickets", callback_data='my_tickets')],
-            [InlineKeyboardButton("🔗 Connect Wallet", callback_data='connect_wallet')]
-        ]
+    keyboard = [
+        [InlineKeyboardButton("💰 Buy Ticket", callback_data='buy_ticket')],
+        [InlineKeyboardButton("🎫 My Tickets", callback_data='my_tickets')],
+        [InlineKeyboardButton("🔗 Connect Wallet", callback_data='connect_wallet')]
+    ]
     
     reply_markup = InlineKeyboardMarkup(keyboard)
     
     welcome_text = f"Hi {user.mention_html()}! Welcome to TON Lottery!\n\n"
     welcome_text += "Get your lottery ticket for 1 TON and win big!\n\n"
-    
-    if wallet_connected:
-        welcome_text += "✅ Your wallet is connected!"
-    else:
-        welcome_text += "🔗 Connect your wallet to purchase tickets easily"
+    welcome_text += "💰 Prize pool: 80% of all ticket sales!"
     
     await query.edit_message_text(welcome_text, reply_markup=reply_markup, parse_mode='HTML')
 
@@ -220,20 +175,20 @@ async def connect_wallet(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def connect_tonkeeper(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     
-    # Generate a connection request (simplified)
-    connection_url = f"https://app.tonkeeper.com/ton-connect?url=tonlotterybot_{query.from_user.id}"
-    
     keyboard = [
-        [InlineKeyboardButton("🔗 Open Tonkeeper", url=connection_url)],
         [InlineKeyboardButton("✅ I'm Connected", callback_data='wallet_connected')],
         [InlineKeyboardButton("⬅️ Back", callback_data='connect_wallet')]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
     await query.edit_message_text(
-        "📱 Connect Tonkeeper Wallet\n\n"
-        "Click the button below to connect your Tonkeeper wallet:\n\n"
-        "After connecting, come back here and click 'I'm Connected'",
+        "📱 Tonkeeper Connection\n\n"
+        "To connect your Tonkeeper wallet:\n\n"
+        "1. Open Tonkeeper app\n"
+        "2. Tap on 'Connect to App'\n"
+        "3. Scan the QR code or use the deep link\n"
+        "4. Confirm the connection\n\n"
+        "After connecting, click 'I'm Connected' below.",
         reply_markup=reply_markup
     )
 
@@ -241,20 +196,21 @@ async def connect_tonkeeper(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def connect_tonhub(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     
-    # Generate a connection request (simplified)
-    connection_url = f"https://tonhub.com/ton-connect?url=tonlotterybot_{query.from_user.id}"
-    
     keyboard = [
-        [InlineKeyboardButton("🔗 Open Tonhub", url=connection_url)],
         [InlineKeyboardButton("✅ I'm Connected", callback_data='wallet_connected')],
         [InlineKeyboardButton("⬅️ Back", callback_data='connect_wallet')]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
     await query.edit_message_text(
-        "📲 Connect Tonhub Wallet\n\n"
-        "Click the button below to connect your Tonhub wallet:\n\n"
-        "After connecting, come back here and click 'I'm Connected'",
+        "📲 Tonhub Connection\n\n"
+        "To connect your Tonhub wallet:\n\n"
+        "1. Open Tonhub app\n"
+        "2. Go to 'Settings' → 'Connected Apps'\n"
+        "3. Tap 'Connect New App'\n"
+        "4. Scan the QR code or use the deep link\n"
+        "5. Confirm the connection\n\n"
+        "After connecting, click 'I'm Connected' below.",
         reply_markup=reply_markup
     )
 
@@ -262,19 +218,6 @@ async def connect_tonhub(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def wallet_connected(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user = query.from_user
-    
-    # Save wallet connection to database
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute('''
-        UPDATE tickets SET wallet_connected = TRUE 
-        WHERE user_id = %s
-        ''', (user.id,))
-        conn.commit()
-        conn.close()
-    except Exception as e:
-        logger.error(f"Error saving wallet connection: {e}")
     
     keyboard = [
         [InlineKeyboardButton("💰 Buy Ticket", callback_data='buy_ticket')],
@@ -315,7 +258,7 @@ async def buy_ticket(update: Update, context: ContextTypes.DEFAULT_TYPE):
         VALUES (%s, %s, %s, %s, %s, %s)
         ''', (
             user.id, 
-            user.username, 
+            user.username or 'Unknown', 
             ','.join(map(str, numbers)), 
             bonus, 
             ticket_id,
@@ -512,7 +455,7 @@ async def my_tickets(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.error(msg="Exception while handling an update:", exc_info=context.error)
 
-# Main function
+# Main function - SIMPLIFIED FOR RAILWAY (ONLY POLLING)
 def main():
     # Get token from environment variable
     token = os.environ.get('TELEGRAM_BOT_TOKEN')
@@ -521,7 +464,7 @@ def main():
         return
     
     # Check if TON wallet address is set
-    if TON_WALLET_ADDRESS == 'UQDn-7fmd-goYxycJZuKBBkaBM2Hd8XJEVOqQyE_22892mXs':
+    if TON_WALLET_ADDRESS == 'YOUR_TON_WALLET_ADDRESS_HERE':
         logger.error("Please set your TON_WALLET_ADDRESS in environment variables")
         return
     
@@ -538,8 +481,8 @@ def main():
     # Error handler
     application.add_error_handler(error_handler)
     
-    # Use polling (simpler for development)
-    logger.info("Starting polling...")
+    # Use polling only (simpler and more reliable)
+    logger.info("Starting bot with polling...")
     application.run_polling()
 
 if __name__ == '__main__':
