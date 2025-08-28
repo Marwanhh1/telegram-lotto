@@ -60,6 +60,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("🔗 Connect Wallet", callback_data='connect_wallet')]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    # Log that we received a start command
+    logger.info(f"Received /start from user {user.id} ({user.username})")
+    
     await update.message.reply_html(
         f"Hi {user.mention_html()}! Welcome to TON Lottery!\n\n"
         "Get your lottery ticket for 1 TON and win big!",
@@ -70,6 +74,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
+    
+    logger.info(f"Received callback: {query.data}")
     
     if query.data == 'buy_ticket':
         await buy_ticket(update, context)
@@ -303,9 +309,26 @@ def main():
     # Error handler
     application.add_error_handler(error_handler)
     
-    # Start the bot - use polling for development
-    logger.info("Starting bot...")
-    application.run_polling()
+    # Check if we're running on Railway (with a web URL)
+    railway_environment = os.environ.get('RAILWAY_ENVIRONMENT')
+    railway_static_url = os.environ.get('RAILWAY_STATIC_URL')
+    
+    if railway_environment and railway_static_url:
+        # Production - use webhook
+        port = int(os.environ.get('PORT', 8000))
+        webhook_url = f"{railway_static_url}/{token}"
+        
+        logger.info(f"Starting webhook on port {port} with URL {webhook_url}")
+        
+        application.run_webhook(
+            listen="0.0.0.0",
+            port=port,
+            webhook_url=webhook_url
+        )
+    else:
+        # Development - use polling
+        logger.info("Starting polling...")
+        application.run_polling()
 
 if __name__ == '__main__':
     main()
