@@ -20,7 +20,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # TON Configuration - REPLACE WITH YOUR WALLET ADDRESS
-TON_WALLET_ADDRESS = os.environ.get('TON_WALLET_ADDRESS', 'YOUR_TON_WALLET_ADDRESS_HERE')
+TON_WALLET_ADDRESS = os.environ.get('TON_WALLET_ADDRESS', 'UQDn-7fmd-goYxycJZuKBBkaBM2Hd8XJEVOqQyE_22892mXs')
 TON_API_URL = "https://toncenter.com/api/v3/"
 TON_API_KEY = os.environ.get('TON_API_KEY', '')  # Optional: for higher rate limits
 
