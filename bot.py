@@ -20,12 +20,19 @@ logger = logging.getLogger(__name__)
 # Database connection
 def get_db_connection():
     database_url = os.environ.get('DATABASE_URL')
+    if not database_url:
+        logger.error("DATABASE_URL not found in environment variables")
+        return None
     return psycopg2.connect(database_url)
 
 # Initialize database
 def init_db():
     try:
         conn = get_db_connection()
+        if conn is None:
+            logger.error("Could not connect to database")
+            return
+            
         cursor = conn.cursor()
         cursor.execute('''
         CREATE TABLE IF NOT EXISTS tickets (
@@ -61,7 +68,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
-    # Log that we received a start command
     logger.info(f"Received /start from user {user.id} ({user.username})")
     
     await update.message.reply_html(
@@ -169,6 +175,10 @@ async def confirm_purchase(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Save to database with pending status
     try:
         conn = get_db_connection()
+        if conn is None:
+            await query.edit_message_text("❌ Database connection error. Please try again.")
+            return
+            
         cursor = conn.cursor()
         cursor.execute('''
         INSERT INTO tickets (user_id, username, numbers, bonus_number, ticket_id, purchased_at)
@@ -217,6 +227,10 @@ async def process_payment(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     try:
         conn = get_db_connection()
+        if conn is None:
+            await query.edit_message_text("❌ Database connection error. Please try again.")
+            return
+            
         cursor = conn.cursor()
         cursor.execute('''
         UPDATE tickets SET payment_status = 'paid' WHERE ticket_id = %s AND user_id = %s
@@ -253,6 +267,10 @@ async def my_tickets(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     try:
         conn = get_db_connection()
+        if conn is None:
+            await query.edit_message_text("❌ Database connection error. Please try again.")
+            return
+            
         cursor = conn.cursor()
         cursor.execute('''
         SELECT ticket_id, numbers, bonus_number, purchased_at, payment_status 
@@ -309,21 +327,20 @@ def main():
     # Error handler
     application.add_error_handler(error_handler)
     
-    # Check if we're running on Railway (with a web URL)
+    # Check if we're running on Railway (simplified check)
     railway_environment = os.environ.get('RAILWAY_ENVIRONMENT')
-    railway_static_url = os.environ.get('RAILWAY_STATIC_URL')
     
-    if railway_environment and railway_static_url:
-        # Production - use webhook
+    if railway_environment:
+        # Production - use webhook (Railway will handle the webhook setup)
         port = int(os.environ.get('PORT', 8000))
-        webhook_url = f"{railway_static_url}/{token}"
+        logger.info(f"Starting webhook on port {port}")
         
-        logger.info(f"Starting webhook on port {port} with URL {webhook_url}")
-        
+        # Use a simple webhook setup - Railway will provide the URL
         application.run_webhook(
             listen="0.0.0.0",
             port=port,
-            webhook_url=webhook_url
+            webhook_url="",  # Railway will handle this
+            url_path=token
         )
     else:
         # Development - use polling
