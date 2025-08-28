@@ -327,19 +327,21 @@ def main():
     # Error handler
     application.add_error_handler(error_handler)
     
-    # Check if we're running on Railway (simplified check)
+    # Check if we're running on Railway
     railway_environment = os.environ.get('RAILWAY_ENVIRONMENT')
     
     if railway_environment:
-        # Production - use webhook (Railway will handle the webhook setup)
+        # Production - use webhook on Railway
         port = int(os.environ.get('PORT', 8000))
+        webhook_url = os.environ.get('RAILWAY_STATIC_URL', '')
+        
         logger.info(f"Starting webhook on port {port}")
         
-        # Use a simple webhook setup - Railway will provide the URL
+        # Set webhook
         application.run_webhook(
             listen="0.0.0.0",
             port=port,
-            webhook_url="",  # Railway will handle this
+            webhook_url=f"{webhook_url}/{token}",
             url_path=token
         )
     else:
