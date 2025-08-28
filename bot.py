@@ -327,27 +327,9 @@ def main():
     # Error handler
     application.add_error_handler(error_handler)
     
-    # Check if we're running on Railway
-    railway_environment = os.environ.get('RAILWAY_ENVIRONMENT')
-    
-    if railway_environment:
-        # Production - use webhook on Railway
-        port = int(os.environ.get('PORT', 8000))
-        webhook_url = os.environ.get('RAILWAY_STATIC_URL', '')
-        
-        logger.info(f"Starting webhook on port {port}")
-        
-        # Set webhook
-        application.run_webhook(
-            listen="0.0.0.0",
-            port=port,
-            webhook_url=f"{webhook_url}/{token}",
-            url_path=token
-        )
-    else:
-        # Development - use polling
-        logger.info("Starting polling...")
-        application.run_polling()
+    # Always use polling (simpler for now)
+    logger.info("Starting polling...")
+    application.run_polling()
 
 if __name__ == '__main__':
     main()
